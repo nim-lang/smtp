@@ -9,3 +9,6 @@ srcDir        = "src"
 # Dependencies
 
 requires "nim >= 0.15.0"
+
+task compileExample, "compiles client example":
+  exec "nim c examples/client_example"
