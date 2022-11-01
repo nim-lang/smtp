@@ -46,6 +46,9 @@
 import net, strutils, strtabs, base64
 import asyncnet, asyncdispatch
 
+when defined(nimPreviewSlimSystem):
+  import std/assertions
+
 export Port
 
 type
