@@ -7,6 +7,8 @@
 #    distribution, for details about the copyright.
 #
 
+## .. note:: In order to use this module, run `nimble install smtp`.
+##
 ## This module implements the SMTP client protocol as specified by RFC 5321,
 ## this can be used to send mail to any SMTP Server.
 ##
