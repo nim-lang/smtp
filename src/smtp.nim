@@ -259,11 +259,12 @@ proc connect*(smtp: Smtp | AsyncSmtp,
   ## May fail with ReplyError or with a socket error.
   smtp.address = address
   when smtp is Smtp:
-    smtp.sock = net.dial(address, port)
+    smtp.sock = newSocket()
   else:
-    smtp.sock = await asyncnet.dial(address, port)
+    smtp.sock = newAsyncSocket()
   if smtp.sslContext != nil:
     smtp.sslContext.wrapSocket(smtp.sock)
+  await smtp.sock.connect(address, port)
   await smtp.checkReply("220")
   if helo:
     let speaksEsmtp = await smtp.ehlo()
