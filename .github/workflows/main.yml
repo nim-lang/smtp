@@ -16,8 +16,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jiro4989/setup-nim-action@v1
 
-      - name: install package
-        run: nimble install -y
-
-      - name: compile example
-        run: nimble compileExample
+      - name: Test
+        run: nimble test
