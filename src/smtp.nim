@@ -228,14 +228,10 @@ proc checkReply*(smtp: Smtp | AsyncSmtp, reply: string) {.multisync.} =
   if not line.startsWith(reply):
     await quitExcpt(smtp, "Expected " & reply & " reply, got: " & line)
 
-proc helo*(smtp: Smtp | AsyncSmtp, helo: string = "HELO") {.multisync.} =
+proc helo*(smtp: Smtp | AsyncSmtp) {.multisync.} =
   # Sends the HELO request
-  await smtp.debugSend(helo & " " & smtp.address & "\c\L")
+  await smtp.debugSend("HELO " & smtp.address & "\c\L")
   await smtp.checkReply("250")
-
-proc lhlo*(smtp: Smtp | AsyncSmtp) {.multisync.} =
-  # Sends the LHLO request (for LMTP)
-  await smtp.helo("LHLO")
 
 proc recvEhlo(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
   ## Skips "250-" lines, read until "250 " found.
@@ -254,7 +250,7 @@ proc ehlo*(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
   return await smtp.recvEhlo()
 
 proc connect*(smtp: Smtp | AsyncSmtp,
-              address: string, port: Port, helo: bool = true) {.multisync.} =
+              address: string, port: Port) {.multisync.} =
   ## Establishes a connection with a SMTP server.
   ## May fail with ReplyError or with a socket error.
   smtp.address = address
@@ -265,18 +261,17 @@ proc connect*(smtp: Smtp | AsyncSmtp,
   if smtp.sslContext != nil:
     smtp.sslContext.wrapSocket(smtp.sock)
   await smtp.checkReply("220")
-  if helo:
-    let speaksEsmtp = await smtp.ehlo()
-    if not speaksEsmtp:
-      await smtp.helo()
+  let speaksEsmtp = await smtp.ehlo()
+  if not speaksEsmtp:
+    await smtp.helo()
 
-proc dial*(address: string, port: Port, useSsl = false, debug = false, sslContext: SslContext = nil, helo: bool = true): Smtp =
+proc dial*(address: string, port: Port, useSsl = false, debug = false, sslContext: SslContext = nil): Smtp =
   result = newSmtp(useSsl, debug, sslContext)
-  result.connect(address, port, helo)
+  result.connect(address, port)
 
-proc dialAsync*(address: string, port: Port, useSsl = false, debug = false, sslContext: SslContext = nil, helo: bool = true): Future[AsyncSmtp] {.async.} =
+proc dialAsync*(address: string, port: Port, useSsl = false, debug = false, sslContext: SslContext = nil): Future[AsyncSmtp] {.async.} =
   result = newAsyncSmtp(useSsl, debug, sslContext)
-  await result.connect(address, port, helo)
+  await result.connect(address, port)
 
 proc startTls*(smtp: Smtp | AsyncSmtp, sslContext: SslContext = nil) {.multisync.} =
   ## Put the SMTP connection in TLS (Transport Layer Security) mode.
