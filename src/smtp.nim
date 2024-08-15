@@ -67,7 +67,6 @@ type
     sock: SocketType
     address: string
     debug: bool
-    sslContext: SslContext
 
   Smtp* = SmtpBase[Socket]
   AsyncSmtp* = SmtpBase[AsyncSocket]
@@ -180,14 +179,13 @@ proc newSmtp*(useSsl = false, debug = false, sslContext: SslContext = nil): Smtp
   ## Creates a new `Smtp` instance.
   new result
   result.debug = debug
-  result.sock = nil
-  result.sslContext = nil
+  result.sock = newSocket()
   if useSsl:
     when compiledWithSsl:
       if sslContext == nil:
-        result.sslContext = getSSLContext()
+        getSSLContext().wrapSocket(result.sock)
       else:
-        result.sslContext = sslContext
+        sslContext.wrapSocket(result.sock)
     else:
       {.error: "SMTP module compiled without SSL support".}
 
@@ -195,14 +193,13 @@ proc newAsyncSmtp*(useSsl = false, debug = false, sslContext: SslContext = nil):
   ## Creates a new `AsyncSmtp` instance.
   new result
   result.debug = debug
-  result.sock = nil
-  result.sslContext = nil
+  result.sock = newAsyncSocket()
   if useSsl:
     when compiledWithSsl:
       if sslContext == nil:
-        result.sslContext = getSSLContext()
+        getSSLContext().wrapSocket(result.sock)
       else:
-        result.sslContext = sslContext
+        sslContext.wrapSocket(result.sock)
     else:
       {.error: "SMTP module compiled without SSL support".}
 
@@ -254,24 +251,11 @@ proc connect*(smtp: Smtp | AsyncSmtp,
   ## Establishes a connection with a SMTP server.
   ## May fail with ReplyError or with a socket error.
   smtp.address = address
-  when smtp is Smtp:
-    smtp.sock = net.dial(address, port)
-  else:
-    smtp.sock = await asyncnet.dial(address, port)
-  if smtp.sslContext != nil:
-    smtp.sslContext.wrapSocket(smtp.sock)
+  await smtp.sock.connect(address, port)
   await smtp.checkReply("220")
   let speaksEsmtp = await smtp.ehlo()
   if not speaksEsmtp:
     await smtp.helo()
-
-proc dial*(address: string, port: Port, useSsl = false, debug = false, sslContext: SslContext = nil): Smtp =
-  result = newSmtp(useSsl, debug, sslContext)
-  result.connect(address, port)
-
-proc dialAsync*(address: string, port: Port, useSsl = false, debug = false, sslContext: SslContext = nil): Future[AsyncSmtp] {.async.} =
-  result = newAsyncSmtp(useSsl, debug, sslContext)
-  await result.connect(address, port)
 
 proc startTls*(smtp: Smtp | AsyncSmtp, sslContext: SslContext = nil) {.multisync.} =
   ## Put the SMTP connection in TLS (Transport Layer Security) mode.
@@ -330,4 +314,4 @@ proc sendMail*(smtp: Smtp | AsyncSmtp, fromAddr: string,
 proc close*(smtp: Smtp | AsyncSmtp) {.multisync.} =
   ## Disconnects from the SMTP server and closes the socket.
   await smtp.debugSend("QUIT\c\L")
-  if smtp.sock != nil: smtp.sock.close()
+  smtp.sock.close()
