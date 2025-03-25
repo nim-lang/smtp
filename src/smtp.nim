@@ -187,7 +187,7 @@ proc newSmtp*(useSsl = false, debug = false, sslContext: SslContext = nil): Smtp
       else:
         sslContext.wrapSocket(result.sock)
     else:
-      {.error: "SMTP module compiled without SSL support".}
+      raise newException(AssertionDefect, "SMTP module compiled without SSL support")
 
 proc newAsyncSmtp*(useSsl = false, debug = false, sslContext: SslContext = nil): AsyncSmtp =
   ## Creates a new `AsyncSmtp` instance.
@@ -201,7 +201,7 @@ proc newAsyncSmtp*(useSsl = false, debug = false, sslContext: SslContext = nil):
       else:
         sslContext.wrapSocket(result.sock)
     else:
-      {.error: "SMTP module compiled without SSL support".}
+      raise newException(AssertionDefect, "SMTP module compiled without SSL support")
 
 proc quitExcpt(smtp: AsyncSmtp, msg: string): Future[void] =
   var retFuture = newFuture[void]()
@@ -271,7 +271,7 @@ proc startTls*(smtp: Smtp | AsyncSmtp, sslContext: SslContext = nil) {.multisync
     if not speaksEsmtp:
       await smtp.helo()
   else:
-    {.error: "SMTP module compiled without SSL support".}
+    raise newException(AssertionDefect, "SMTP module compiled without SSL support")
 
 proc auth*(smtp: Smtp | AsyncSmtp, username, password: string) {.multisync.} =
   ## Sends an AUTH command to the server to login as the `username`
