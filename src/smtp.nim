@@ -113,7 +113,7 @@ proc quitExcpt(smtp: Smtp, msg: string) =
   smtp.debugSend("QUIT")
   raise newException(ReplyError, msg)
 
-const compiledWithSsl = defined(ssl)
+const compiledWithSsl = true
 
 when not defined(ssl):
   let defaultSSLContext: SslContext = nil
