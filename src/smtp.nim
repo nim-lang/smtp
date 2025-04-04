@@ -287,8 +287,8 @@ proc auth*(smtp: Smtp | AsyncSmtp, username, password: string) {.multisync.} =
   await smtp.debugSend(encode(password) & "\c\L")
   await smtp.checkReply("235") # Check whether the authentication was successful.
 
-proc sendMail*(smtp: Smtp | AsyncSmtp, fromAddr: string,
-               toAddrs: seq[string], msg: string) {.multisync.} =
+proc sendMailGetReply*(smtp: Smtp | AsyncSmtp, fromAddr: string,
+               toAddrs: seq[string], msg: string): Future[string] {.multisync.} =
   ## Sends `msg` from `fromAddr` to the addresses specified in `toAddrs`.
   ## Messages may be formed using `createMessage` by converting the
   ## Message into a string.
@@ -309,7 +309,24 @@ proc sendMail*(smtp: Smtp | AsyncSmtp, fromAddr: string,
   await smtp.checkReply("354")
   await smtp.sock.send(msg & "\c\L")
   await smtp.debugSend(".\c\L")
-  await smtp.checkReply("250")
+
+  var line = await smtp.debugRecv()
+  if not line.startsWith("250"):
+    await quitExcpt(smtp, "Expected " & "250" & " reply, got: " & line)
+  return line
+
+proc sendMail*(smtp: Smtp | AsyncSmtp, fromAddr: string,
+               toAddrs: seq[string], msg: string) {.multisync.} =
+  ## Sends `msg` from `fromAddr` to the addresses specified in `toAddrs`.
+  ## Messages may be formed using `createMessage` by converting the
+  ## Message into a string.
+  ##
+  ## You need to make sure that `fromAddr` and `toAddrs` don't contain
+  ## any newline characters. Failing to do so will raise `AssertionDefect`.
+  doAssert(not (toAddrs.containsNewline() or fromAddr.contains({'\c', '\L'})),
+           "'toAddrs' and 'fromAddr' shouldn't contain any newline characters")
+
+  discard sendMailGetReply(smtp, fromAddr, toAddrs, msg)
 
 proc close*(smtp: Smtp | AsyncSmtp) {.multisync.} =
   ## Disconnects from the SMTP server and closes the socket.
