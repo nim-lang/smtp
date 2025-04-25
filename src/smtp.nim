@@ -45,7 +45,7 @@
 ## For SSL support this module relies on OpenSSL. If you want to
 ## enable SSL, compile with `-d:ssl`.
 
-import net, strutils, strtabs, base64
+import net, strutils, strtabs, base64, options, sequtils, strformat
 import asyncnet, asyncdispatch
 
 when defined(nimPreviewSlimSystem):
@@ -55,11 +55,18 @@ export Port
 
 type
   Message* = object
-    msgTo: seq[string]
-    msgCc: seq[string]
+    msgTo: seq[Email]
+    msgCc: seq[Email]
+    msgBcc: seq[Email]
+    msgReplyTo: seq[Email]
+    msgSender: Email
     msgSubject: string
     msgOtherHeaders: StringTableRef
     msgBody: string
+
+  Email* = object
+    name: Option[string]
+    address*: string
 
   ReplyError* = object of IOError
 
@@ -71,10 +78,101 @@ type
   Smtp* = SmtpBase[Socket]
   AsyncSmtp* = SmtpBase[AsyncSocket]
 
+const NEW_LINE = "\c\L"
+
+proc sender*(msg: Message): Email = msg.msgSender
+
+proc recipients*(msg: Message): seq[Email] =
+  ## Retrieves all recipients of the message, which are all recipients defined for to, cc and bcc
+  return msg.msgTo & msg.msgCc & msg.msgBcc
+
+proc containsNewline(str: string): bool =
+  str.contains({'\c', '\L'})
+
 proc containsNewline(xs: seq[string]): bool =
   for x in xs:
-    if x.contains({'\c', '\L'}):
+    if x.containsNewline():
       return true
+
+proc createEmail*(address: string, name: Option[string] = none(string)): Email =
+  ## Creates a new email address
+  ## 
+  ## You need to make sure that `address` and `name` (if specified) do not contain any newline characters. 
+  ## Failing to do so will raise `AssertionDefect`.
+  doAssert(not address.containsNewline(), "'address' shouldn't contain any newline characters")
+  if(name.isSome()):
+    doAssert(not name.get().containsNewline(), "'name' shouldn't contain any newline characters")
+  
+  result.address = address
+  result.name = name
+
+proc toEmail(value: string | Email): Email =
+  when typeof(value) is string:
+    createEmail(value)
+  else:
+    value
+
+proc createMessage*[T: Email | string](
+  mSubject, mBody: string;
+  sender: T;
+  mTo: seq[T] = @[];
+  mCc: seq[T] = @[];
+  mBcc: seq[T] = @[];
+  mReplyTo: seq[T] = @[];
+  otherHeaders: openArray[tuple[name, value: string]] = @[]
+): Message =
+  ## Creates a new MIME compliant message.
+  ##
+  ## You need to make sure that `mSubject` does not contain any newline characters. 
+  ## Failing to do so will raise `AssertionDefect`.
+  doAssert(
+    not mSubject.containsNewline(),
+    "'mSubject' shouldn't contain any newline characters"
+  )
+  
+  let senderMail = sender.toEmail()
+  
+  result.msgSubject = mSubject
+  result.msgBody = mBody
+  result.msgTo = mTo.mapIt(toEmail(it))
+  result.msgCc = mCc.mapIt(toEmail(it))
+  result.msgBcc = mBcc.mapIt(toEmail(it))
+  result.msgReplyTo = mReplyTo.mapIt(toEmail(it))
+  result.msgSender = senderMail
+  result.msgOtherHeaders = newStringTable()
+  for n, v in items(otherHeaders):
+    result.msgOtherHeaders[n] = v
+
+proc `$`*(email: Email): string =
+  ## stringify for `Email`.
+  if email.name.isSome():
+    result = fmt""""{email.name.get()}" <{email.address}>"""
+  else:
+    result = email.address
+
+proc toSmtpField(name: string, value: string): string = 
+  fmt"{name}: {value}{NEW_LINE}"
+
+proc `$`*(msg: Message): string =
+  ## stringify for `Message`.
+  result = ""
+  let sender = $msg.msgSender
+  result.add(toSmtpField("From", sender))
+  if msg.msgTo.len() > 0:
+    result.add(toSmtpField("To", msg.msgTo.join(", ")))
+  if msg.msgReplyTo.len() > 0:
+    result.add(toSmtpField("Reply-To", msg.msgReplyTo.join(", ")))
+  if msg.msgCc.len() > 0:
+    result.add(toSmtpField("Cc", msg.msgCc.join(", ")))
+  if msg.msgBcc.len() > 0:
+    result.add(toSmtpField("Bcc", msg.msgBcc.join(", ")))
+  
+  result.add(toSmtpField("Subject", msg.msgSubject))
+  for key, value in pairs(msg.msgOtherHeaders):
+    result.add(toSmtpField(key, value))
+
+  result.add(NEW_LINE)
+  result.add(msg.msgBody)
 
 proc debugSend*(smtp: Smtp | AsyncSmtp, cmd: string) {.multisync.} =
   ## Sends `cmd` on the socket connected to the SMTP server.
@@ -124,56 +222,6 @@ else:
     if defaultSSLContext == nil:
       defaultSSLContext = newContext(verifyMode = CVerifyNone)
     result = defaultSSLContext
-
-proc createMessage*(mSubject, mBody: string, mTo, mCc: seq[string],
-                otherHeaders: openArray[tuple[name, value: string]]): Message =
-  ## Creates a new MIME compliant message.
-  ##
-  ## You need to make sure that `mSubject`, `mTo` and `mCc` don't contain
-  ## any newline characters. Failing to do so will raise `AssertionDefect`.
-  doAssert(not mSubject.contains({'\c', '\L'}),
-           "'mSubject' shouldn't contain any newline characters")
-  doAssert(not (mTo.containsNewline() or mCc.containsNewline()),
-           "'mTo' and 'mCc' shouldn't contain any newline characters")
-
-  result.msgTo = mTo
-  result.msgCc = mCc
-  result.msgSubject = mSubject
-  result.msgBody = mBody
-  result.msgOtherHeaders = newStringTable()
-  for n, v in items(otherHeaders):
-    result.msgOtherHeaders[n] = v
-
-proc createMessage*(mSubject, mBody: string, mTo,
-                    mCc: seq[string] = @[]): Message =
-  ## Alternate version of the above.
-  ##
-  ## You need to make sure that `mSubject`, `mTo` and `mCc` don't contain
-  ## any newline characters. Failing to do so will raise `AssertionDefect`.
-  doAssert(not mSubject.contains({'\c', '\L'}),
-           "'mSubject' shouldn't contain any newline characters")
-  doAssert(not (mTo.containsNewline() or mCc.containsNewline()),
-           "'mTo' and 'mCc' shouldn't contain any newline characters")
-  result.msgTo = mTo
-  result.msgCc = mCc
-  result.msgSubject = mSubject
-  result.msgBody = mBody
-  result.msgOtherHeaders = newStringTable()
-
-proc `$`*(msg: Message): string =
-  ## stringify for `Message`.
-  result = ""
-  if msg.msgTo.len() > 0:
-    result = "TO: " & msg.msgTo.join(", ") & "\c\L"
-  if msg.msgCc.len() > 0:
-    result.add("CC: " & msg.msgCc.join(", ") & "\c\L")
-  # TODO: Folding? i.e when a line is too long, shorten it...
-  result.add("Subject: " & msg.msgSubject & "\c\L")
-  for key, value in pairs(msg.msgOtherHeaders):
-    result.add(key & ": " & value & "\c\L")
-
-  result.add("\c\L")
-  result.add(msg.msgBody)
 
 proc newSmtp*(useSsl = false, debug = false, sslContext: SslContext = nil): Smtp =
   ## Creates a new `Smtp` instance.
@@ -227,7 +275,7 @@ proc checkReply*(smtp: Smtp | AsyncSmtp, reply: string) {.multisync.} =
 
 proc helo*(smtp: Smtp | AsyncSmtp) {.multisync.} =
   # Sends the HELO request
-  await smtp.debugSend("HELO " & smtp.address & "\c\L")
+  await smtp.debugSend("HELO " & smtp.address & NEW_LINE)
   await smtp.checkReply("250")
 
 proc recvEhlo(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
@@ -243,7 +291,7 @@ proc recvEhlo(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
 
 proc ehlo*(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
   ## Sends EHLO request.
-  await smtp.debugSend("EHLO " & smtp.address & "\c\L")
+  await smtp.debugSend("EHLO " & smtp.address & NEW_LINE)
   return await smtp.recvEhlo()
 
 proc connect*(smtp: Smtp | AsyncSmtp,
@@ -281,35 +329,54 @@ proc auth*(smtp: Smtp | AsyncSmtp, username, password: string) {.multisync.} =
   await smtp.debugSend("AUTH LOGIN\c\L")
   await smtp.checkReply("334") # TODO: Check whether it's asking for the "Username:"
                                # i.e "334 VXNlcm5hbWU6"
-  await smtp.debugSend(encode(username) & "\c\L")
+  await smtp.debugSend(encode(username) & NEW_LINE)
   await smtp.checkReply("334") # TODO: Same as above, only "Password:" (I think?)
 
-  await smtp.debugSend(encode(password) & "\c\L")
+  await smtp.debugSend(encode(password) & NEW_LINE)
   await smtp.checkReply("235") # Check whether the authentication was successful.
 
-proc sendMail*(smtp: Smtp | AsyncSmtp, fromAddr: string,
-               toAddrs: seq[string], msg: string) {.multisync.} =
+proc sendMail*(
+  smtp: Smtp | AsyncSmtp, 
+  fromAddr: string,
+  toAddrs: seq[string], 
+  msg: string
+) {.multisync.} =
   ## Sends `msg` from `fromAddr` to the addresses specified in `toAddrs`.
   ## Messages may be formed using `createMessage` by converting the
   ## Message into a string.
   ##
   ## You need to make sure that `fromAddr` and `toAddrs` don't contain
   ## any newline characters. Failing to do so will raise `AssertionDefect`.
-  doAssert(not (toAddrs.containsNewline() or fromAddr.contains({'\c', '\L'})),
-           "'toAddrs' and 'fromAddr' shouldn't contain any newline characters")
+  doAssert(
+    not (toAddrs.containsNewline() or fromAddr.containsNewline()),
+    "'toAddrs' and 'fromAddr' shouldn't contain any newline characters"
+  )
 
-  await smtp.debugSend("MAIL FROM:<" & fromAddr & ">\c\L")
+  await smtp.debugSend(fmt"""MAIL FROM:<{fromAddr}>{NEW_LINE}""")
   await smtp.checkReply("250")
   for address in items(toAddrs):
-    await smtp.debugSend("RCPT TO:<" & address & ">\c\L")
+    await smtp.debugSend(fmt"""RCPT TO:<{address}>{NEW_LINE}""")
     await smtp.checkReply("250")
 
   # Send the message
-  await smtp.debugSend("DATA" & "\c\L")
+  await smtp.debugSend("DATA" & NEW_LINE)
   await smtp.checkReply("354")
-  await smtp.sock.send(msg & "\c\L")
-  await smtp.debugSend(".\c\L")
+  await smtp.sock.send(msg & NEW_LINE)
+  await smtp.debugSend("." & NEW_LINE)
   await smtp.checkReply("250")
+
+proc sendMail*(smtp: Smtp | AsyncSmtp, msg: Message) {.multisync.} =
+  ## Convenience utility for sending messages.
+  ## Sends `msg` from the sender as specified in `sender <#sender,Message>`_
+  ## and the recipients as specified in `recipients <#recipients,Message>`_.
+  ## 
+  ## See also:
+  ## * `sendMail <#sendMail,Smtp,string,seq[string],string>`_
+  let senderAddress = msg.sender().address
+  let recipientAddresses = msg.recipients().mapIt(it.address)
+  let msgBody = $msg
+  echo "SENDING: ", msgBody
+  await smtp.sendMail(senderAddress, recipientAddresses, msgBody)
 
 proc close*(smtp: Smtp | AsyncSmtp) {.multisync.} =
   ## Disconnects from the SMTP server and closes the socket.

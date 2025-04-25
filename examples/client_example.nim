@@ -13,8 +13,12 @@ proc `[]`(c: Config, key: string): string = c.getSectionValue("", key)
 
 let
   conf = loadConfig("smtp.ini")
-  msg = createMessage("Hello from Nim's SMTP!",
-    "Hello!\n Is this awesome or what?", @[conf["recipient"]])
+  msg = createMessage(
+    "Hello from Nim's SMTP!",
+    "Hello!\n Is this awesome or what?", 
+    conf["sender"],
+    @[conf["recipient"]]
+  )
 
 assert conf["smtphost"] != ""
 
@@ -26,6 +30,7 @@ proc async_test() {.async.} =
   await client.connect(conf["smtphost"], conf["port"].parseInt.Port)
   await client.auth(conf["username"], conf["password"])
   await client.sendMail(conf["sender"], @[conf["recipient"]], $msg)
+  await client.sendMail(msg)
   await client.close()
   echo "async email sent"
 
@@ -37,6 +42,7 @@ proc sync_test() =
   smtpConn.connect(conf["smtphost"], conf["port"].parseInt.Port)
   smtpConn.auth(conf["username"], conf["password"])
   smtpConn.sendMail(conf["sender"], @[conf["recipient"]], $msg)
+  smtpConn.sendMail(msg)
   smtpConn.close()
   echo "sync email sent"
 
