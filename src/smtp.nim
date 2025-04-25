@@ -73,9 +73,12 @@ type
 
 const NEW_LINE = "\c\L"
 
+proc containsNewline(str: string): bool =
+  str.contains({'\c', '\L'})
+
 proc containsNewline(xs: seq[string]): bool =
   for x in xs:
-    if x.contains({'\c', '\L'}):
+    if x.containsNewline():
       return true
 
 proc debugSend*(smtp: Smtp | AsyncSmtp, cmd: string) {.multisync.} =
@@ -297,8 +300,10 @@ proc sendMail*(smtp: Smtp | AsyncSmtp, fromAddr: string,
   ##
   ## You need to make sure that `fromAddr` and `toAddrs` don't contain
   ## any newline characters. Failing to do so will raise `AssertionDefect`.
-  doAssert(not (toAddrs.containsNewline() or fromAddr.contains({'\c', '\L'})),
-           "'toAddrs' and 'fromAddr' shouldn't contain any newline characters")
+  doAssert(
+    not (toAddrs.containsNewline() or fromAddr.containsNewline()),
+    "'toAddrs' and 'fromAddr' shouldn't contain any newline characters"
+  )
 
   await smtp.debugSend(fmt"""MAIL FROM:<{fromAddr}>{NEW_LINE}""")
   await smtp.checkReply("250")
