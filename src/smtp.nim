@@ -365,6 +365,19 @@ proc sendMail*(
   await smtp.debugSend("." & NEW_LINE)
   await smtp.checkReply("250")
 
+proc sendMail*(smtp: Smtp | AsyncSmtp, msg: Message) {.multisync.} =
+  ## Convenience utility for sending messages.
+  ## Sends `msg` from the sender as specified in `sender <#sender,Message>`_
+  ## and the recipients as specified in `recipients <#recipients,Message>`_.
+  ## 
+  ## See also:
+  ## * `sendMail <#sendMail,Smtp,string,seq[string],string>`_
+  let senderAddress = msg.sender().address
+  let recipientAddresses = msg.recipients().mapIt(it.address)
+  let msgBody = $msg
+  echo "SENDING: ", msgBody
+  await smtp.sendMail(senderAddress, recipientAddresses, msgBody)
+
 proc close*(smtp: Smtp | AsyncSmtp) {.multisync.} =
   ## Disconnects from the SMTP server and closes the socket.
   await smtp.debugSend("QUIT\c\L")
