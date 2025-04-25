@@ -45,7 +45,7 @@
 ## For SSL support this module relies on OpenSSL. If you want to
 ## enable SSL, compile with `-d:ssl`.
 
-import net, strutils, strtabs, base64
+import net, strutils, strtabs, base64, options, sequtils, strformat
 import asyncnet, asyncdispatch
 
 when defined(nimPreviewSlimSystem):
@@ -70,6 +70,8 @@ type
 
   Smtp* = SmtpBase[Socket]
   AsyncSmtp* = SmtpBase[AsyncSocket]
+
+const NEW_LINE = "\c\L"
 
 proc containsNewline(xs: seq[string]): bool =
   for x in xs:
@@ -227,7 +229,7 @@ proc checkReply*(smtp: Smtp | AsyncSmtp, reply: string) {.multisync.} =
 
 proc helo*(smtp: Smtp | AsyncSmtp) {.multisync.} =
   # Sends the HELO request
-  await smtp.debugSend("HELO " & smtp.address & "\c\L")
+  await smtp.debugSend("HELO " & smtp.address & NEW_LINE)
   await smtp.checkReply("250")
 
 proc recvEhlo(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
@@ -243,7 +245,7 @@ proc recvEhlo(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
 
 proc ehlo*(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
   ## Sends EHLO request.
-  await smtp.debugSend("EHLO " & smtp.address & "\c\L")
+  await smtp.debugSend("EHLO " & smtp.address & NEW_LINE)
   return await smtp.recvEhlo()
 
 proc connect*(smtp: Smtp | AsyncSmtp,
@@ -281,10 +283,10 @@ proc auth*(smtp: Smtp | AsyncSmtp, username, password: string) {.multisync.} =
   await smtp.debugSend("AUTH LOGIN\c\L")
   await smtp.checkReply("334") # TODO: Check whether it's asking for the "Username:"
                                # i.e "334 VXNlcm5hbWU6"
-  await smtp.debugSend(encode(username) & "\c\L")
+  await smtp.debugSend(encode(username) & NEW_LINE)
   await smtp.checkReply("334") # TODO: Same as above, only "Password:" (I think?)
 
-  await smtp.debugSend(encode(password) & "\c\L")
+  await smtp.debugSend(encode(password) & NEW_LINE)
   await smtp.checkReply("235") # Check whether the authentication was successful.
 
 proc sendMail*(smtp: Smtp | AsyncSmtp, fromAddr: string,
@@ -298,17 +300,17 @@ proc sendMail*(smtp: Smtp | AsyncSmtp, fromAddr: string,
   doAssert(not (toAddrs.containsNewline() or fromAddr.contains({'\c', '\L'})),
            "'toAddrs' and 'fromAddr' shouldn't contain any newline characters")
 
-  await smtp.debugSend("MAIL FROM:<" & fromAddr & ">\c\L")
+  await smtp.debugSend(fmt"""MAIL FROM:<{fromAddr}>{NEW_LINE}""")
   await smtp.checkReply("250")
   for address in items(toAddrs):
-    await smtp.debugSend("RCPT TO:<" & address & ">\c\L")
+    await smtp.debugSend(fmt"""RCPT TO:<{address}>{NEW_LINE}""")
     await smtp.checkReply("250")
 
   # Send the message
-  await smtp.debugSend("DATA" & "\c\L")
+  await smtp.debugSend("DATA" & NEW_LINE)
   await smtp.checkReply("354")
-  await smtp.sock.send(msg & "\c\L")
-  await smtp.debugSend(".\c\L")
+  await smtp.sock.send(msg & NEW_LINE)
+  await smtp.debugSend("." & NEW_LINE)
   await smtp.checkReply("250")
 
 proc close*(smtp: Smtp | AsyncSmtp) {.multisync.} =
