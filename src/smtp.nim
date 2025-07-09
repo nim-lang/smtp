@@ -242,9 +242,7 @@ proc newSmtp*(useSsl = false, debug = false, sslContext: SslContext = nil): Smtp
     else:
       raise newException(AssertionDefect, "SMTP module compiled without SSL support")
 
-proc newAsyncSmtp*(
-    useSsl = false, debug = false, sslContext: SslContext = nil
-): AsyncSmtp =
+proc newAsyncSmtp*(useSsl = false, debug = false, sslContext: SslContext = nil): AsyncSmtp =
   ## Creates a new `AsyncSmtp` instance.
   new result
   result.debug = debug
