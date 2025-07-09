@@ -137,14 +137,14 @@ proc createMessage*[T: Email | string](
 
   let senderMail = sender.toEmail()
 
-  result.msgSubject = mSubject
-  result.msgBody = mBody
-  result.msgTo = mTo.mapIt(toEmail(it))
-  result.msgCc = mCc.mapIt(toEmail(it))
-  result.msgBcc = mBcc.mapIt(toEmail(it))
-  result.msgReplyTo = mReplyTo.mapIt(toEmail(it))
-  result.msgSender = senderMail
-  result.msgOtherHeaders = newStringTable()
+  result = Message(msgSubject: mSubject,
+    msgBody: mBody,
+    msgTo: mTo.mapIt(toEmail(it)),
+    msgCc: mCc.mapIt(toEmail(it)),
+    msgBcc: mBcc.mapIt(toEmail(it)),
+    msgReplyTo: mReplyTo.mapIt(toEmail(it)),
+    msgSender: senderMail,
+    msgOtherHeaders: newStringTable())
   for n, v in items(otherHeaders):
     result.msgOtherHeaders[n] = v
 
