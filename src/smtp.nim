@@ -78,7 +78,7 @@ type
   Smtp* = SmtpBase[Socket]
   AsyncSmtp* = SmtpBase[AsyncSocket]
 
-const NEW_LINE = "\c\L"
+const nl = "\c\L"
 
 proc sender*(msg: Message): Email =
   msg.msgSender
@@ -156,7 +156,7 @@ proc `$`*(email: Email): string =
     result = email.address
 
 proc toSmtpField(name: string, value: string): string =
-  fmt"{name}: {value}{NEW_LINE}"
+  fmt"{name}: {value}{nl}"
 
 proc `$`*(msg: Message): string =
   ## stringify for `Message`.
@@ -176,7 +176,7 @@ proc `$`*(msg: Message): string =
   for key, value in pairs(msg.msgOtherHeaders):
     result.add(toSmtpField(key, value))
 
-  result.add(NEW_LINE)
+  result.add(nl)
   result.add(msg.msgBody)
 
 proc debugSend*(smtp: Smtp | AsyncSmtp, cmd: string) {.multisync.} =
@@ -279,7 +279,7 @@ proc checkReply*(smtp: Smtp | AsyncSmtp, reply: string) {.multisync.} =
 
 proc helo*(smtp: Smtp | AsyncSmtp) {.multisync.} =
   # Sends the HELO request
-  await smtp.debugSend("HELO " & smtp.address & NEW_LINE)
+  await smtp.debugSend("HELO " & smtp.address & nl)
   await smtp.checkReply("250")
 
 proc recvEhlo(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
@@ -298,7 +298,7 @@ proc recvEhlo(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
 
 proc ehlo*(smtp: Smtp | AsyncSmtp): Future[bool] {.multisync.} =
   ## Sends EHLO request.
-  await smtp.debugSend("EHLO " & smtp.address & NEW_LINE)
+  await smtp.debugSend("EHLO " & smtp.address & nl)
   return await smtp.recvEhlo()
 
 proc connect*(smtp: Smtp | AsyncSmtp, address: string, port: Port) {.multisync.} =
@@ -336,10 +336,10 @@ proc auth*(smtp: Smtp | AsyncSmtp, username, password: string) {.multisync.} =
   await smtp.checkReply("334")
     # TODO: Check whether it's asking for the "Username:"
     # i.e "334 VXNlcm5hbWU6"
-  await smtp.debugSend(encode(username) & NEW_LINE)
+  await smtp.debugSend(encode(username) & nl)
   await smtp.checkReply("334") # TODO: Same as above, only "Password:" (I think?)
 
-  await smtp.debugSend(encode(password) & NEW_LINE)
+  await smtp.debugSend(encode(password) & nl)
   await smtp.checkReply("235") # Check whether the authentication was successful.
 
 proc sendMail*(
@@ -356,17 +356,17 @@ proc sendMail*(
     "'toAddrs' and 'fromAddr' shouldn't contain any newline characters",
   )
 
-  await smtp.debugSend(fmt"""MAIL FROM:<{fromAddr}>{NEW_LINE}""")
+  await smtp.debugSend(fmt"""MAIL FROM:<{fromAddr}>{nl}""")
   await smtp.checkReply("250")
   for address in items(toAddrs):
-    await smtp.debugSend(fmt"""RCPT TO:<{address}>{NEW_LINE}""")
+    await smtp.debugSend(fmt"""RCPT TO:<{address}>{nl}""")
     await smtp.checkReply("250")
 
   # Send the message
-  await smtp.debugSend("DATA" & NEW_LINE)
+  await smtp.debugSend("DATA" & nl)
   await smtp.checkReply("354")
-  await smtp.sock.send(msg & NEW_LINE)
-  await smtp.debugSend("." & NEW_LINE)
+  await smtp.sock.send(msg & nl)
+  await smtp.debugSend("." & nl)
   await smtp.checkReply("250")
 
 proc sendMail*(smtp: Smtp | AsyncSmtp, msg: Message) {.multisync.} =
@@ -379,7 +379,6 @@ proc sendMail*(smtp: Smtp | AsyncSmtp, msg: Message) {.multisync.} =
   let senderAddress = msg.sender().address
   let recipientAddresses = msg.recipients().mapIt(it.address)
   let msgBody = $msg
-  echo "SENDING: ", msgBody
   await smtp.sendMail(senderAddress, recipientAddresses, msgBody)
 
 proc close*(smtp: Smtp | AsyncSmtp) {.multisync.} =
