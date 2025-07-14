@@ -196,6 +196,7 @@ proc toSmtpField(name: string, value: string): string =
 proc `$`*(msg: Message): string =
   ## stringify for `Message`.
   result = ""
+
   let sender = $msg.msgSender
   result.add(toSmtpField("From", sender))
   if msg.msgTo.len() > 0:
