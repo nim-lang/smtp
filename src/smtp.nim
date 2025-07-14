@@ -148,6 +148,41 @@ proc createMessage*[T: Email | string](
   for n, v in items(otherHeaders):
     result.msgOtherHeaders[n] = v
 
+proc createMessage*(mSubject, mBody: string, mTo, mCc: seq[string],
+                otherHeaders: openArray[tuple[name, value: string]]): Message {.deprecated: "use `createMessage` overloads with a `sender`".} =
+  ## Creates a new MIME compliant message.
+  ##
+  ## You need to make sure that `mSubject`, `mTo` and `mCc` don't contain
+  ## any newline characters. Failing to do so will raise `AssertionDefect`.
+  doAssert(not mSubject.contains({'\c', '\L'}),
+           "'mSubject' shouldn't contain any newline characters")
+  doAssert(not (mTo.containsNewline() or mCc.containsNewline()),
+           "'mTo' and 'mCc' shouldn't contain any newline characters")
+
+  result.msgTo = mTo.mapIt(toEmail(it))
+  result.msgCc = mCc.mapIt(toEmail(it))
+  result.msgSubject = mSubject
+  result.msgBody = mBody
+  result.msgOtherHeaders = newStringTable()
+  for n, v in items(otherHeaders):
+    result.msgOtherHeaders[n] = v
+
+proc createMessage*(mSubject, mBody: string, mTo,
+                    mCc: seq[string] = @[]): Message {.deprecated: "use `createMessage` overloads with a `sender`".} =
+  ## Alternate version of the above.
+  ##
+  ## You need to make sure that `mSubject`, `mTo` and `mCc` don't contain
+  ## any newline characters. Failing to do so will raise `AssertionDefect`.
+  doAssert(not mSubject.contains({'\c', '\L'}),
+           "'mSubject' shouldn't contain any newline characters")
+  doAssert(not (mTo.containsNewline() or mCc.containsNewline()),
+           "'mTo' and 'mCc' shouldn't contain any newline characters")
+  result.msgTo = mTo.mapIt(toEmail(it))
+  result.msgCc = mCc.mapIt(toEmail(it))
+  result.msgSubject = mSubject
+  result.msgBody = mBody
+  result.msgOtherHeaders = newStringTable()
+
 proc `$`*(email: Email): string =
   ## stringify for `Email`.
   if email.name != "":
